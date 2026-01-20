@@ -1,254 +1,351 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 
-/* ================= TYPES ================= */
+/* ======================================================
+   TYPES
+====================================================== */
 
 interface Property {
   _id: string;
   name: string;
 }
 
-interface IncomeTotals {
-  booking: number;
-  agoda: number;
-  airbnb: number;
-  expedia: number;
-  directBank: number;
-  directCash: number;
-  netTotal: number;
+interface Booking {
+  _id: string;
+  guestName: string;
+  propertyId?: Property;
+  roomId?: any;
+  platform: string;
+  paymentMethod: "cash" | "bank" | "online" | "card";
+  paymentDate?: string;
+  amount: number;
+  expectedPayment?: number;
 }
 
-interface IncomeResponse {
-  totals: IncomeTotals;
-  records: any[];
-}
-
-/* ================= API ================= */
+/* ======================================================
+   CONSTANTS
+====================================================== */
 
 const fetchJSON = (url: string) => fetch(url).then((r) => r.json());
 
-/* ================= PAGE ================= */
+const PLATFORMS = [
+  { label: "Direct", key: "Direct", type: "direct" },
+  { label: "Booking.com", key: "Booking.com", type: "ota" },
+  { label: "Expedia", key: "Expedia", type: "ota" },
+  { label: "Agoda", key: "Agoda", type: "ota" },
+  { label: "Airbnb", key: "Airbnb", type: "ota" },
+] as const;
 
-export default function DailyIncomePage() {
-  const [type, setType] = useState<"daily" | "monthly" | "range">("daily");
-  const [date, setDate] = useState("");
-  const [month, setMonth] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [propertyId, setPropertyId] = useState("");
-  const [platform, setPlatform] = useState("");
+const OTA_PLATFORMS = new Set(["Booking.com", "Expedia", "Agoda", "Airbnb"]);
 
-  const inputClass =
-    "border rounded p-2 h-10 bg-white text-gray-900 w-full appearance-none";
+const formatMoney = (v: number) => v.toLocaleString();
 
-  /* ================= QUERIES ================= */
+/* ======================================================
+   PAGE
+====================================================== */
 
+export default function IncomeByPlatformPage() {
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [selectedProperty, setSelectedProperty] = useState("");
+
+  /* ===============================
+     DIRECT → PAYMENT DATE
+  =============================== */
+  const { data: directBookings = [], isLoading: loadingDirect } = useQuery<
+    Booking[]
+  >({
+    queryKey: ["direct-bookings", start, end],
+    queryFn: () => fetchJSON(`/api/by-payment-range?start=${start}&end=${end}`),
+    enabled: !!start && !!end,
+  });
+
+  /* ===============================
+     OTA → CHECKOUT DATE
+  =============================== */
+  const { data: otaBookings = [], isLoading: loadingOta } = useQuery<Booking[]>(
+    {
+      queryKey: ["ota-bookings", start, end],
+      queryFn: () =>
+        fetchJSON(`/api/by-checkout-range?start=${start}&end=${end}`),
+      enabled: !!start && !!end,
+    }
+  );
+
+  /* ===============================
+     MERGE + DEDUP (IMPORTANT)
+  =============================== */
+  const bookings = useMemo(() => {
+    const map = new Map<string, Booking>();
+
+    // Direct bookings ONLY from payment endpoint
+    for (const b of directBookings) {
+      if (b.platform === "Direct") {
+        map.set(b._id, b);
+      }
+    }
+
+    // OTA bookings ONLY from checkout endpoint
+    for (const b of otaBookings) {
+      if (OTA_PLATFORMS.has(b.platform)) {
+        map.set(b._id, b);
+      }
+    }
+
+    return Array.from(map.values());
+  }, [directBookings, otaBookings]);
+
+  const isLoading = loadingDirect || loadingOta;
+
+  /* ===============================
+     PROPERTIES
+  =============================== */
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["properties"],
     queryFn: () => fetchJSON("/api/properties"),
   });
 
-  const { data, isLoading } = useQuery<IncomeResponse>({
-    queryKey: ["income", type, date, month, from, to, propertyId, platform],
-    queryFn: () =>
-      fetchJSON(
-        `/api/income?type=${type}&date=${date}&month=${month}&from=${from}&to=${to}&propertyId=${propertyId}&platform=${platform}`
-      ),
-    enabled:
-      (type === "daily" && !!date) ||
-      (type === "monthly" && !!month) ||
-      (type === "range" && !!from && !!to),
-  });
+  /* ===============================
+     FILTER BY PROPERTY
+  =============================== */
+  const filteredBookings = useMemo(() => {
+    if (!selectedProperty) return bookings;
+    return bookings.filter((b) => b.propertyId?._id === selectedProperty);
+  }, [bookings, selectedProperty]);
 
-  /* ================= UI ================= */
+  /* ===============================
+     GROUP BY PLATFORM
+  =============================== */
+  const bookingsByPlatform = useMemo(() => {
+    const map: Record<string, Booking[]> = {};
+    for (const b of filteredBookings) {
+      if (!map[b.platform]) map[b.platform] = [];
+      map[b.platform].push(b);
+    }
+    return map;
+  }, [filteredBookings]);
 
   return (
-    <div className="min-h-screen bg-gray-100 p-1 sm:p-6 lg:p-8">
-      <h1 className="text-2xl sm:text-3xl font-bold mb-6">💰 Income Report</h1>
+    <div className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-7xl mx-auto space-y-10">
+        <header>
+          <h1 className="text-3xl font-bold">Income by Platform</h1>
+          <p className="text-gray-500">Accounting-safe revenue dashboard</p>
+        </header>
 
-      {/* ================= FILTERS ================= */}
-      <div className="bg-white rounded-xl shadow p-4 sm:p-6 mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
-        <select
-          className={inputClass}
-          value={type}
-          onChange={(e) => setType(e.target.value as any)}
-        >
-          <option value="daily">Daily</option>
-          <option value="monthly">Monthly</option>
-          <option value="range">Date Range</option>
-        </select>
-
-        {type === "daily" && (
-          <input
-            type="date"
-            className={inputClass}
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        )}
-
-        {type === "monthly" && (
-          <input
-            type="month"
-            className={inputClass}
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-          />
-        )}
-
-        {type === "range" && (
-          <>
+        {/* FILTERS */}
+        <div className="bg-white rounded-2xl border p-6 flex flex-wrap gap-4 items-end">
+          <div>
+            <label className="text-sm text-gray-500">Start date</label>
             <input
               type="date"
-              className={inputClass}
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              className="block border rounded-lg px-3 py-2"
             />
+          </div>
+
+          <div>
+            <label className="text-sm text-gray-500">End date</label>
             <input
               type="date"
-              className={inputClass}
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              className="block border rounded-lg px-3 py-2"
             />
-          </>
-        )}
+          </div>
 
-        <select
-          className={inputClass}
-          value={propertyId}
-          onChange={(e) => setPropertyId(e.target.value)}
-        >
-          <option value="">All Properties</option>
-          {properties.map((p) => (
-            <option key={p._id} value={p._id}>
-              {p.name}
-            </option>
+          <div>
+            <label className="text-sm text-gray-500">Property</label>
+            <select
+              value={selectedProperty}
+              onChange={(e) => setSelectedProperty(e.target.value)}
+              className="block border rounded-lg px-3 py-2"
+            >
+              <option value="">All properties</option>
+              {properties.map((p) => (
+                <option key={p._id} value={p._id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            onClick={() => {
+              setStart("");
+              setEnd("");
+              setSelectedProperty("");
+            }}
+            className="ml-auto border rounded-lg px-4 py-2 text-sm hover:bg-gray-100"
+          >
+            Reset
+          </button>
+        </div>
+
+        {isLoading && <p className="text-gray-500">Loading data…</p>}
+
+        <div className="space-y-8">
+          {PLATFORMS.map((p) => (
+            <PlatformSection
+              key={p.key}
+              label={p.label}
+              type={p.type}
+              bookings={bookingsByPlatform[p.key] || []}
+            />
           ))}
-        </select>
-
-        <select
-          className={inputClass}
-          value={platform}
-          onChange={(e) => setPlatform(e.target.value)}
-        >
-          <option value="">All Platforms</option>
-          <option>Booking.com</option>
-          <option>Agoda</option>
-          <option>Airbnb</option>
-          <option>Expedia</option>
-          <option>Direct</option>
-        </select>
+        </div>
       </div>
-
-      {isLoading && <p className="text-gray-500">Loading income report...</p>}
-
-      {/* ================= TOTAL CARDS ================= */}
-      {data && (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <IncomeCard title="Booking.com" value={data.totals.booking} />
-            <IncomeCard title="Agoda" value={data.totals.agoda} />
-            <IncomeCard title="Airbnb" value={data.totals.airbnb} />
-            <IncomeCard title="Expedia" value={data.totals.expedia} />
-            <IncomeCard title="Direct Bank" value={data.totals.directBank} />
-            <IncomeCard title="Direct Cash" value={data.totals.directCash} />
-            <IncomeCard
-              title="Net Total"
-              value={data.totals.netTotal}
-              highlight
-            />
-          </div>
-
-          {/* ================= MOBILE ================= */}
-          <div className="space-y-3 sm:hidden">
-            {data.records.map((r) => (
-              <div key={r._id} className="bg-white rounded-xl shadow p-4">
-                <p className="font-semibold">{r.guestName}</p>
-                <p className="text-sm text-gray-600">{r.propertyId?.name}</p>
-                <div className="flex justify-between mt-2 text-sm">
-                  <Badge text={r.platform} />
-                  <span>{r.amount}</span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  {r.paymentMethod} • {r.paymentDate?.slice(0, 10)}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {/* ================= DESKTOP TABLE ================= */}
-          <div className="hidden sm:block bg-white rounded-xl shadow overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-100">
-                <tr>
-                  <Th>Guest</Th>
-                  <Th>Property</Th>
-                  <Th>Platform</Th>
-                  <Th>Payment</Th>
-                  <Th>Date</Th>
-                  <Th>Amount</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.records.map((r) => (
-                  <tr key={r._id} className="border-t">
-                    <Td>{r.guestName}</Td>
-                    <Td>{r.propertyId?.name}</Td>
-                    <Td>
-                      <Badge text={r.platform} />
-                    </Td>
-                    <Td>{r.paymentMethod}</Td>
-                    <Td>{r.paymentDate?.slice(0, 10)}</Td>
-                    <Td>{r.amount}</Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
     </div>
   );
 }
 
-/* ================= COMPONENTS ================= */
+/* ======================================================
+   PLATFORM SECTION
+====================================================== */
 
-function IncomeCard({
-  title,
+function PlatformSection({
+  label,
+  type,
+  bookings,
+}: {
+  label: string;
+  type: "direct" | "ota";
+  bookings: Booking[];
+}) {
+  const qc = useQueryClient();
+
+  const permanentDelete = useMutation({
+    mutationFn: async (bookingId: string) => {
+      const ok = confirm(
+        "⚠️ This will permanently delete the booking. This cannot be undone."
+      );
+      if (!ok) return;
+
+      const res = await fetch("/api/bookings?permanent=true", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId }),
+      });
+
+      if (!res.ok) throw new Error("Delete failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      // ✅ CORRECT INVALIDATIONS
+      qc.invalidateQueries({ queryKey: ["direct-bookings"] });
+      qc.invalidateQueries({ queryKey: ["ota-bookings"] });
+    },
+  });
+  const cashTotal = bookings.reduce(
+    (s, b) => (b.paymentMethod === "cash" ? s + b.amount : s),
+    0
+  );
+
+  const bankTotal = bookings.reduce(
+    (s, b) => (b.paymentMethod === "bank" ? s + b.amount : s),
+    0
+  );
+
+  const cardTotal = bookings.reduce(
+    (s, b) => (b.paymentMethod === "card" ? s + b.amount : s),
+    0
+  );
+
+  const otaTotal = bookings.reduce((s, b) => s + (b.expectedPayment || 0), 0);
+
+  return (
+    <div className="bg-white rounded-2xl border p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-xl font-semibold">{label}</h2>
+        <span className="text-sm text-gray-500">
+          {bookings.length} bookings
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        {type === "direct" ? (
+          <>
+            <SummaryCard label="Cash" value={cashTotal} />
+            <SummaryCard label="Bank" value={bankTotal} />
+            <SummaryCard label="Card" value={cardTotal} />
+            <SummaryCard
+              label="Total"
+              value={cashTotal + bankTotal + cardTotal}
+              highlight
+            />
+          </>
+        ) : (
+          <SummaryCard label="Expected Revenue" value={otaTotal} highlight />
+        )}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border rounded-lg overflow-hidden">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="border px-3 py-2 text-left">Guest</th>
+              <th className="border px-3 py-2 text-left">Property</th>
+              <th className="border px-3 py-2 text-left">Room</th>
+              <th className="border px-3 py-2 text-right">Amount</th>
+              {/* <th className="border px-3 py-2 text-right">#</th> */}
+            </tr>
+          </thead>
+          <tbody>
+            {bookings.map((b) => (
+              <tr key={b._id} className="hover:bg-gray-50">
+                <td className="border px-3 py-2">{b.guestName}</td>
+                <td className="border px-3 py-2 text-xs">
+                  {b.propertyId?.name || "—"}
+                </td>
+                <td className="border px-3 py-2 text-xs">
+                  {b?.roomId?.propertyId?.name || "—"} -{" "}
+                  {b?.roomId?.roomNo || "—"}
+                </td>
+                <td className="border px-3 py-2 text-right">
+                  {formatMoney(
+                    type === "direct" ? b.amount : b.expectedPayment || 0
+                  )}
+                </td>
+                {/* <td className="border px-3 py-2 text-right">
+                  <div className="flex justify-end pt-2">
+                    <button
+                      onClick={() => permanentDelete.mutate(b._id)}
+                      className="text-red-600 hover:text-red-800 text-sm"
+                    >
+                      ❌ Delete Forever
+                    </button>
+                  </div>
+                </td> */}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({
+  label,
   value,
   highlight,
 }: {
-  title: string;
+  label: string;
   value: number;
   highlight?: boolean;
 }) {
   return (
     <div
-      className={`rounded-xl p-4 shadow ${
+      className={`rounded-xl border p-4 ${
         highlight ? "bg-black text-white" : "bg-white"
       }`}
     >
-      <p className="text-sm opacity-70">{title}</p>
-      <p className="text-2xl font-bold mt-1">{value}</p>
+      <p className="text-sm opacity-80">{label}</p>
+      <p className="text-2xl font-bold">{formatMoney(value)}</p>
     </div>
-  );
-}
-
-function Th({ children }: { children: React.ReactNode }) {
-  return <th className="text-left p-3 text-sm">{children}</th>;
-}
-
-function Td({ children }: { children: React.ReactNode }) {
-  return <td className="p-3 text-sm">{children}</td>;
-}
-
-function Badge({ text }: { text: string }) {
-  return (
-    <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">
-      {text}
-    </span>
   );
 }

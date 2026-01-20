@@ -19,11 +19,14 @@ interface Room {
 interface Booking {
   _id: string;
   guestName: string;
-  roomId?: string;
+  roomId?: any;
+  unitType?: string;
   propertyId?: { _id: string; name: string };
   checkInDate: string;
   checkOutDate: string;
+  property: Property;
   status: string;
+  platform: string;
   type?: "checkin" | "checkout" | "stay";
 }
 
@@ -57,15 +60,17 @@ export default function RoomOccupancyPage() {
     queryKey: ["occupancies", propertyId, selectedDate],
     enabled: !!propertyId,
     queryFn: () =>
-      fetch(`/api/bookings?propertyId=${propertyId}&date=${selectedDate}`).then(
-        (res) => res.json()
-      ),
+      fetch(
+        `/api/by-room-property?propertyId=${propertyId}&date=${selectedDate}`
+      ).then((res) => res.json()),
   });
 
   const { data: unassigned = [] } = useQuery<Booking[]>({
-    queryKey: ["unassignedBookings"],
+    queryKey: ["unassignedBookings", selectedDate],
     queryFn: () =>
-      fetch(`/api/bookings?unassigned=true`).then((res) => res.json()),
+      fetch(`/api/bookings?unassigned=true&date=${selectedDate}`).then((res) =>
+        res.json()
+      ),
   });
 
   /* ================= MUTATION ================= */
@@ -86,7 +91,7 @@ export default function RoomOccupancyPage() {
   /* ================= HELPERS ================= */
 
   const bookingsForRoomOnDate = (roomId: string) =>
-    bookings.filter((b) => b.roomId === roomId);
+    bookings.filter((b) => b.roomId?._id === roomId);
 
   const isRoomAvailable = (roomId: string) => {
     const roomBookings = bookingsForRoomOnDate(roomId);
@@ -228,6 +233,16 @@ export default function RoomOccupancyPage() {
                         </button>
                       )}
                     </div>
+                    <div className=" flex justify-end">
+                      <p className="font-semibold text-xs text-orange-700">
+                        {b.platform}
+                      </p>
+                    </div>
+                    <div className=" flex justify-end">
+                      <p className="font-semibold text-xs text-fuchsia-800">
+                        {b.property?.name}
+                      </p>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -248,7 +263,8 @@ export default function RoomOccupancyPage() {
                   {unassigned.map((b) => (
                     <option key={b._id} value={b._id}>
                       {b.guestName} ({b.propertyId?.name || "No Property"}) 📅{" "}
-                      {formatDate(b.checkInDate)} → {formatDate(b.checkOutDate)}
+                      {b?.unitType} {formatDate(b.checkInDate)} →{" "}
+                      {formatDate(b.checkOutDate)}
                     </option>
                   ))}
                 </select>

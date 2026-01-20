@@ -9,24 +9,23 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
 
+    const type = searchParams.get("type") || "daily"; // daily | monthly | range
     const date = searchParams.get("date");
+    const month = searchParams.get("month");
     const from = searchParams.get("from");
     const to = searchParams.get("to");
-    const month = searchParams.get("month"); // ✅ NEW
     const propertyId = searchParams.get("propertyId");
     const platform = searchParams.get("platform");
 
-    const query: any = {
-      status: { $ne: "cancel" },
-    };
+    const query: any = { status: { $ne: "cancel" } };
 
-    /* ================= PROPERTY ================= */
-    if (propertyId) {
+    // Optional property filter
+    if (propertyId && propertyId.trim() !== "") {
       query.propertyId = propertyId;
     }
 
-    /* ================= PLATFORM ================= */
-    if (platform) {
+    // Optional platform filter
+    if (platform && platform.trim() !== "") {
       if (platform === "directBank") {
         query.platform = "Direct";
         query.paymentMethod = "bank";
@@ -38,53 +37,41 @@ export async function GET(req: Request) {
       }
     }
 
-    /* ================= DATE LOGIC ================= */
+    // Date filter
     let start: Date | null = null;
     let end: Date | null = null;
 
-    // 📅 Single day
-    if (date) {
+    if (type === "daily" && date) {
       start = new Date(date);
-      start.setUTCHours(0, 0, 0, 0);
-
+      start.setHours(0, 0, 0, 0);
       end = new Date(date);
-      end.setUTCHours(23, 59, 59, 999);
+      end.setHours(23, 59, 59, 999);
     }
 
-    // 📆 Date range
-    if (from && to) {
+    if (type === "range" && from && to) {
       start = new Date(from);
-      start.setUTCHours(0, 0, 0, 0);
-
+      start.setHours(0, 0, 0, 0);
       end = new Date(to);
-      end.setUTCHours(23, 59, 59, 999);
+      end.setHours(23, 59, 59, 999);
     }
 
-    // 🗓️ Monthly
-    if (month) {
+    if (type === "monthly" && month) {
       const [year, monthIndex] = month.split("-").map(Number);
-
-      start = new Date(Date.UTC(year, monthIndex - 1, 1, 0, 0, 0));
-      end = new Date(Date.UTC(year, monthIndex, 0, 23, 59, 59, 999));
+      start = new Date(year, monthIndex - 1, 1, 0, 0, 0);
+      end = new Date(year, monthIndex, 0, 23, 59, 59, 999);
     }
 
-    /** Apply date filter safely */
     if (start && end) {
-      query.$or = [
-        { paymentDate: { $gte: start, $lte: end } },
-        {
-          paymentDate: { $exists: false },
-          createdAt: { $gte: start, $lte: end },
-        },
-      ];
+      query.paymentDate = { $gte: start, $lte: end };
     }
 
-    /* ================= QUERY ================= */
-    const records = await Booking.find(query)
-      .populate("propertyId")
-      .sort({ paymentDate: -1, createdAt: -1 });
+    // Fetch bookings
+    const records = await Booking.find(query).sort({
+      paymentDate: -1,
+      createdAt: -1,
+    });
 
-    /* ================= TOTALS ================= */
+    // Calculate totals
     const totals = {
       booking: 0,
       agoda: 0,
@@ -95,25 +82,43 @@ export async function GET(req: Request) {
       netTotal: 0,
     };
 
-    for (const b of records) {
+    const modifiedRecords = records.map((b: any) => {
       const amount = b.amount || 0;
       totals.netTotal += amount;
 
-      if (b.platform === "Booking.com") totals.booking += amount;
-      if (b.platform === "Agoda") totals.agoda += amount;
-      if (b.platform === "Airbnb") totals.airbnb += amount;
-      if (b.platform === "Expedia") totals.expedia += amount;
-
-      if (b.platform === "Direct" && b.paymentMethod === "bank") {
-        totals.directBank += amount;
+      switch (b.platform) {
+        case "Booking.com":
+          totals.booking += amount;
+          break;
+        case "Agoda":
+          totals.agoda += amount;
+          break;
+        case "Airbnb":
+          totals.airbnb += amount;
+          break;
+        case "Expedia":
+          totals.expedia += amount;
+          break;
+        case "Direct":
+          if (b.paymentMethod === "bank") totals.directBank += amount;
+          if (b.paymentMethod === "cash") totals.directCash += amount;
+          break;
       }
 
-      if (b.platform === "Direct" && b.paymentMethod === "cash") {
-        totals.directCash += amount;
-      }
-    }
+      return {
+        _id: b._id,
+        guestName: b.guestName,
+        propertyId: b.propertyId, // raw ObjectId
+        roomId: b.roomId, // raw ObjectId
+        platform: b.platform,
+        paymentMethod: b.paymentMethod,
+        paymentDate: b.paymentDate ? b.paymentDate.toISOString() : undefined,
+        amount,
+        expectedPayment: b.expectedPayment,
+      };
+    });
 
-    return NextResponse.json({ totals, records });
+    return NextResponse.json({ totals, records: modifiedRecords });
   } catch (error) {
     console.error("INCOME API ERROR:", error);
     return NextResponse.json(

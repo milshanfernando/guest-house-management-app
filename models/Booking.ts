@@ -12,9 +12,10 @@ export interface IBooking {
   roomId?: mongoose.Types.ObjectId;
 
   platform: "Booking.com" | "Agoda" | "Airbnb" | "Expedia" | "Direct";
-  paymentMethod: "online" | "bank" | "cash";
+  paymentMethod: "online" | "bank" | "cash" | "card";
 
   amount: number;
+  expectedPayment?: number; // ✅ NEW FIELD
   paymentDate?: Date; // ✅ NEW FIELD
 
   checkInDate: Date;
@@ -29,6 +30,9 @@ const BookingSchema = new Schema<IBooking>(
     email: String,
     phone: String,
     idNumber: String,
+
+    reservationId: { type: String, unique: true }, // ✅ reservationId added
+    unitType: String, // ✅ unitType added
 
     propertyId: {
       type: Schema.Types.ObjectId,
@@ -49,11 +53,14 @@ const BookingSchema = new Schema<IBooking>(
 
     paymentMethod: {
       type: String,
-      enum: ["online", "bank", "cash"],
+      enum: ["online", "bank", "cash", "card"],
       required: true,
     },
 
     amount: { type: Number, required: true },
+    expectedPayment: {
+      type: Number, // ✅ NEW FIELD
+    },
 
     paymentDate: {
       type: Date, // ✅ NEW
