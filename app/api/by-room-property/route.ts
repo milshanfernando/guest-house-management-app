@@ -48,8 +48,8 @@ export async function GET(req: Request) {
       status: { $ne: "cancel" },
 
       // ✅ Correct hotel occupancy logic
-      checkInDate: { $lt: endOfDay },
-      checkOutDate: { $gt: startOfDay },
+      checkInDate: { $lte: endOfDay },
+      checkOutDate: { $gte: startOfDay },
 
       roomId: { $exists: true },
     })

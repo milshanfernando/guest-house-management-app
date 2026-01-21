@@ -61,7 +61,7 @@ export default function RoomOccupancyPage() {
     enabled: !!propertyId,
     queryFn: () =>
       fetch(
-        `/api/by-room-property?propertyId=${propertyId}&date=${selectedDate}`
+        `/api/by-room-property?propertyId=${propertyId}&date=${selectedDate}`,
       ).then((res) => res.json()),
   });
 
@@ -69,7 +69,7 @@ export default function RoomOccupancyPage() {
     queryKey: ["unassignedBookings", selectedDate],
     queryFn: () =>
       fetch(`/api/bookings?unassigned=true&date=${selectedDate}`).then((res) =>
-        res.json()
+        res.json(),
       ),
   });
 
@@ -99,7 +99,7 @@ export default function RoomOccupancyPage() {
 
     return roomBookings.every(
       (b) =>
-        b.type === "checkout" && b.checkOutDate.slice(0, 10) === selectedDate
+        b.type === "checkout" && b.checkOutDate.slice(0, 10) === selectedDate,
     );
   };
 
@@ -188,8 +188,8 @@ export default function RoomOccupancyPage() {
                           b.status === "checked_out"
                             ? "bg-gray-200 text-gray-700"
                             : b.type === "checkin"
-                            ? "bg-blue-100 text-blue-800"
-                            : "bg-yellow-100 text-yellow-800"
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-yellow-100 text-yellow-800"
                         }`}
                       >
                         {b.status.replace("_", " ")}
