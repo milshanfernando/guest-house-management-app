@@ -15,14 +15,37 @@ interface Property {
 
 interface Booking {
   _id: string;
+
+  // Guest
   guestName: string;
+  reservationId?: string;
+  phone?: string;
+
+  // Property / Room
   propertyId?: Property;
-  roomId?: any;
+  roomId?: {
+    roomNo?: string | number;
+    propertyId?: Property;
+  };
+
+  // Booking Info
+  unitType?: string;
   platform: string;
+  status?: "booked" | "checked_in" | "checked_out" | "cancelled";
+
+  // Payment
   paymentMethod: "cash" | "bank" | "online" | "card";
   paymentDate?: string;
   amount: number;
   expectedPayment?: number;
+
+  // Dates
+  checkInDate?: string;
+  checkOutDate?: string;
+
+  // Meta
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 /* ======================================================
@@ -41,7 +64,8 @@ const PLATFORMS = [
 
 const OTA_PLATFORMS = new Set(["Booking.com", "Expedia", "Agoda", "Airbnb"]);
 
-const formatMoney = (v: number) => v.toLocaleString();
+const formatMoney = (v: number) =>
+  v.toLocaleString(undefined, { minimumFractionDigits: 2 });
 
 /* ======================================================
    PAGE
@@ -72,27 +96,21 @@ export default function IncomeByPlatformPage() {
       queryFn: () =>
         fetchJSON(`/api/by-checkout-range?start=${start}&end=${end}`),
       enabled: !!start && !!end,
-    }
+    },
   );
 
   /* ===============================
-     MERGE + DEDUP (IMPORTANT)
+     MERGE + DEDUP (UNCHANGED)
   =============================== */
   const bookings = useMemo(() => {
     const map = new Map<string, Booking>();
 
-    // Direct bookings ONLY from payment endpoint
     for (const b of directBookings) {
-      if (b.platform === "Direct") {
-        map.set(b._id, b);
-      }
+      if (b.platform === "Direct") map.set(b._id, b);
     }
 
-    // OTA bookings ONLY from checkout endpoint
     for (const b of otaBookings) {
-      if (OTA_PLATFORMS.has(b.platform)) {
-        map.set(b._id, b);
-      }
+      if (OTA_PLATFORMS.has(b.platform)) map.set(b._id, b);
     }
 
     return Array.from(map.values());
@@ -129,66 +147,50 @@ export default function IncomeByPlatformPage() {
   }, [filteredBookings]);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto space-y-10">
+    <div className="min-h-screen bg-gray-50 px-4 py-6">
+      <div className="max-w-6xl mx-auto space-y-8">
+        {/* HEADER */}
         <header>
-          <h1 className="text-3xl font-bold">Income by Platform</h1>
-          <p className="text-gray-500">Accounting-safe revenue dashboard</p>
+          <h1 className="text-2xl font-semibold text-gray-900">
+            Income by Platform
+          </h1>
+          <p className="text-sm text-gray-500">
+            Accounting-safe revenue report
+          </p>
         </header>
 
         {/* FILTERS */}
-        <div className="bg-white rounded-2xl border p-6 flex flex-wrap gap-4 items-end">
-          <div>
-            <label className="text-sm text-gray-500">Start date</label>
-            <input
-              type="date"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              className="block border rounded-lg px-3 py-2"
-            />
-          </div>
-
-          <div>
-            <label className="text-sm text-gray-500">End date</label>
-            <input
-              type="date"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              className="block border rounded-lg px-3 py-2"
-            />
-          </div>
-
-          <div>
-            <label className="text-sm text-gray-500">Property</label>
-            <select
-              value={selectedProperty}
-              onChange={(e) => setSelectedProperty(e.target.value)}
-              className="block border rounded-lg px-3 py-2"
-            >
-              <option value="">All properties</option>
-              {properties.map((p) => (
-                <option key={p._id} value={p._id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <button
-            onClick={() => {
-              setStart("");
-              setEnd("");
-              setSelectedProperty("");
-            }}
-            className="ml-auto border rounded-lg px-4 py-2 text-sm hover:bg-gray-100"
+        <div className="bg-white rounded-xl shadow-sm p-4 flex flex-wrap gap-4">
+          <input
+            type="date"
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
+            className="input"
+          />
+          <input
+            type="date"
+            value={end}
+            onChange={(e) => setEnd(e.target.value)}
+            className="input"
+          />
+          <select
+            value={selectedProperty}
+            onChange={(e) => setSelectedProperty(e.target.value)}
+            className="input min-w-[180px]"
           >
-            Reset
-          </button>
+            <option value="">All properties</option>
+            {properties.map((p) => (
+              <option key={p._id} value={p._id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {isLoading && <p className="text-gray-500">Loading data…</p>}
+        {isLoading && <p className="text-sm text-gray-500">Loading data…</p>}
 
-        <div className="space-y-8">
+        {/* PLATFORMS */}
+        <div className="space-y-10">
           {PLATFORMS.map((p) => (
             <PlatformSection
               key={p.key}
@@ -218,11 +220,10 @@ function PlatformSection({
 }) {
   const qc = useQueryClient();
 
+  /* ===== DELETE (UNCHANGED) ===== */
   const permanentDelete = useMutation({
     mutationFn: async (bookingId: string) => {
-      const ok = confirm(
-        "⚠️ This will permanently delete the booking. This cannot be undone."
-      );
+      const ok = confirm("⚠️ Permanently delete this booking?");
       if (!ok) return;
 
       const res = await fetch("/api/bookings?permanent=true", {
@@ -235,38 +236,36 @@ function PlatformSection({
       return res.json();
     },
     onSuccess: () => {
-      // ✅ CORRECT INVALIDATIONS
       qc.invalidateQueries({ queryKey: ["direct-bookings"] });
       qc.invalidateQueries({ queryKey: ["ota-bookings"] });
     },
   });
+
+  /* ===== TOTALS (UNCHANGED) ===== */
   const cashTotal = bookings.reduce(
     (s, b) => (b.paymentMethod === "cash" ? s + b.amount : s),
-    0
+    0,
   );
-
   const bankTotal = bookings.reduce(
     (s, b) => (b.paymentMethod === "bank" ? s + b.amount : s),
-    0
+    0,
   );
-
   const cardTotal = bookings.reduce(
     (s, b) => (b.paymentMethod === "card" ? s + b.amount : s),
-    0
+    0,
   );
-
   const otaTotal = bookings.reduce((s, b) => s + (b.expectedPayment || 0), 0);
 
   return (
-    <div className="bg-white rounded-2xl border p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-semibold">{label}</h2>
-        <span className="text-sm text-gray-500">
-          {bookings.length} bookings
-        </span>
+    <section className="space-y-4">
+      {/* HEADER */}
+      <div className="flex justify-between items-center">
+        <h2 className="text-lg font-semibold text-gray-900">{label}</h2>
+        <span className="text-xs text-gray-400">{bookings.length} records</span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      {/* SUMMARY */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {type === "direct" ? (
           <>
             <SummaryCard label="Cash" value={cashTotal} />
@@ -283,51 +282,135 @@ function PlatformSection({
         )}
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm border rounded-lg overflow-hidden">
-          <thead className="bg-gray-100">
+      <div className="grid gap-4 sm:hidden">
+        {bookings.map((b) => {
+          const amount = type === "direct" ? b.amount : b.expectedPayment || 0;
+
+          return (
+            <div
+              key={b._id}
+              className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100"
+            >
+              {/* Header */}
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <p className="font-semibold text-gray-900">{b.guestName}</p>
+                  <p className="text-xs text-gray-500">{b.platform}</p>
+                  {/* Phone */}
+                  {b.phone && (
+                    <p className="text-xs text-gray-500">📞 {b.phone}</p>
+                  )}
+                </div>
+
+                <p className="text-lg font-bold text-gray-900">
+                  {formatMoney(amount)}
+                </p>
+              </div>
+
+              {/* Property & Unit & Room */}
+              <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                <div>
+                  <p className="text-gray-400">Property</p>
+                  <p className="font-medium text-gray-700">
+                    {b.propertyId?.name || "—"}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-gray-400">Unit Type</p>
+                  <p className="font-medium text-gray-700">
+                    {b.unitType || "—"}
+                  </p>
+                </div>
+
+                <div className=" col-span-2">
+                  <p className="text-gray-400">Room</p>
+                  <p className="font-medium text-gray-700">
+                    Room {b.roomId?.roomNo} - {b.roomId?.propertyId?.name}
+                  </p>
+                </div>
+              </div>
+
+              {/* Dates */}
+              <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                <div>
+                  <p className="text-gray-400">Check-in</p>
+                  <p className="font-medium text-gray-700">
+                    {b.checkInDate
+                      ? new Date(b.checkInDate).toLocaleDateString()
+                      : "—"}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-gray-400">Check-out</p>
+                  <p className="font-medium text-gray-700">
+                    {b.checkOutDate
+                      ? new Date(b.checkOutDate).toLocaleDateString()
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Payment Info */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <p className="text-gray-400">Payment Method</p>
+                  <p className="font-medium capitalize text-gray-700">
+                    {b.paymentMethod || "—"}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-gray-400">Payment Date</p>
+                  <p className="font-medium text-gray-700">
+                    {b.paymentDate
+                      ? new Date(b.paymentDate).toLocaleDateString()
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* DESKTOP TABLE */}
+      <div className="hidden sm:block bg-white rounded-xl shadow-sm overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-100 text-gray-500">
             <tr>
-              <th className="border px-3 py-2 text-left">Guest</th>
-              <th className="border px-3 py-2 text-left">Property</th>
-              <th className="border px-3 py-2 text-left">Room</th>
-              <th className="border px-3 py-2 text-right">Amount</th>
-              {/* <th className="border px-3 py-2 text-right">#</th> */}
+              <th className="px-4 py-3 text-left">Guest</th>
+              <th className="px-4 py-3 text-left">Property</th>
+              <th className="px-4 py-3 text-left">Room</th>
+              <th className="px-4 py-3 text-right">Amount</th>
             </tr>
           </thead>
           <tbody>
             {bookings.map((b) => (
-              <tr key={b._id} className="hover:bg-gray-50">
-                <td className="border px-3 py-2">{b.guestName}</td>
-                <td className="border px-3 py-2 text-xs">
-                  {b.propertyId?.name || "—"}
+              <tr key={b._id} className="border-t border-gray-100">
+                <td className="px-4 py-3">{b.guestName}</td>
+                <td className="px-4 py-3">{b.propertyId?.name}</td>
+                <td className="px-4 py-3">
+                  {b.roomId?.propertyId?.name} – {b.roomId?.roomNo}
                 </td>
-                <td className="border px-3 py-2 text-xs">
-                  {b?.roomId?.propertyId?.name || "—"} -{" "}
-                  {b?.roomId?.roomNo || "—"}
-                </td>
-                <td className="border px-3 py-2 text-right">
+                <td className="px-4 py-3 text-right font-medium">
                   {formatMoney(
-                    type === "direct" ? b.amount : b.expectedPayment || 0
+                    type === "direct" ? b.amount : b.expectedPayment || 0,
                   )}
                 </td>
-                {/* <td className="border px-3 py-2 text-right">
-                  <div className="flex justify-end pt-2">
-                    <button
-                      onClick={() => permanentDelete.mutate(b._id)}
-                      className="text-red-600 hover:text-red-800 text-sm"
-                    >
-                      ❌ Delete Forever
-                    </button>
-                  </div>
-                </td> */}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
   );
 }
+
+/* ======================================================
+   SUMMARY CARD
+====================================================== */
 
 function SummaryCard({
   label,
@@ -340,12 +423,12 @@ function SummaryCard({
 }) {
   return (
     <div
-      className={`rounded-xl border p-4 ${
-        highlight ? "bg-black text-white" : "bg-white"
+      className={`rounded-xl p-4 shadow-sm ${
+        highlight ? "bg-gray-900 text-white" : "bg-white"
       }`}
     >
-      <p className="text-sm opacity-80">{label}</p>
-      <p className="text-2xl font-bold">{formatMoney(value)}</p>
+      <p className="text-xs opacity-80">{label}</p>
+      <p className="text-xl font-semibold">{formatMoney(value)}</p>
     </div>
   );
 }
