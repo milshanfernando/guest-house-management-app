@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     if (!propertyId) {
       return NextResponse.json(
         { error: "propertyId is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
