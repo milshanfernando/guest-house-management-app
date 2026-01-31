@@ -19,6 +19,7 @@ interface Booking {
   guestName: string;
   reservationId: string;
   propertyId?: Property;
+  unitType?: string; // ✅ ADD THIS
   amount: number;
   expectedPayment?: number;
   platform: string;
@@ -43,6 +44,7 @@ interface ReconciliationRow {
   reference: string;
   csvGuest?: string;
   dbGuests: string[];
+  dbUnitTypes?: string[]; // ✅ ADD
   dbRecords?: Booking[]; // store DB records for cross-property display
   csvNet?: number;
   dbTotal?: number;
@@ -98,7 +100,7 @@ export default function BookingComCheckPage() {
   /** ONLY BOOKING.COM */
   const dbBookings = useMemo(
     () => allBookings.filter((b) => b.platform === "Booking.com"),
-    [allBookings]
+    [allBookings],
   );
 
   /* ===============================
@@ -135,7 +137,7 @@ export default function BookingComCheckPage() {
 
     for (const csv of csvRows) {
       const matched = dbBookings.filter((b) =>
-        b.reservationId?.includes(csv.reference)
+        b.reservationId?.includes(csv.reference),
       );
 
       if (matched.length === 0) {
@@ -154,12 +156,12 @@ export default function BookingComCheckPage() {
       matched.forEach((b) => usedDbIds.add(b._id));
 
       const properties = new Set(
-        matched.map((b) => b.propertyId?.name || "Unknown Property")
+        matched.map((b) => b.propertyId?.name || "Unknown Property"),
       );
 
       const dbTotal = matched.reduce(
         (s, b) => s + (b.expectedPayment ?? b.amount),
-        0
+        0,
       );
 
       let status: Status = "OK";
@@ -175,6 +177,7 @@ export default function BookingComCheckPage() {
         csvGuest: csv.guest,
         csvNet: csv.net,
         dbGuests: matched.map((m) => m.guestName),
+        dbUnitTypes: matched.map((m) => m.unitType || "—"), // ✅ HERE
         dbRecords: matched,
         dbTotal,
         dbCount: matched.length,
@@ -189,6 +192,7 @@ export default function BookingComCheckPage() {
           property: b.propertyId?.name || "Unknown Property",
           reference: b.reservationId,
           dbGuests: [b.guestName],
+          dbUnitTypes: [b.unitType || "—"], // ✅ HERE
           dbRecords: [b],
           dbTotal: b.expectedPayment ?? b.amount,
           dbCount: 1,
@@ -300,6 +304,7 @@ export default function BookingComCheckPage() {
                   <th className="border px-2">Reference</th>
                   <th className="border px-2">CSV Guest</th>
                   <th className="border px-2">DB Guest(s)</th>
+                  <th className="border px-2">Unit Type</th> {/* ✅ */}
                   <th className="border px-2 text-right">CSV Net</th>
                   <th className="border px-2 text-right">DB Total</th>
                   <th className="border px-2 text-center">Status</th>
@@ -312,6 +317,9 @@ export default function BookingComCheckPage() {
                     <td className="border px-2">{r.csvGuest || "—"}</td>
                     <td className="border px-2">
                       {r.dbGuests.join(", ") || "—"}
+                    </td>
+                    <td className="border px-2">
+                      {r.dbUnitTypes?.join(", ") || "—"}
                     </td>
                     <td className="border px-2 text-right">
                       {money(r.csvNet)}
@@ -337,6 +345,8 @@ export default function BookingComCheckPage() {
                         <td className="border px-2">
                           {b.propertyId?.name || "Unknown Property"}
                         </td>
+                        <td className="border px-2">{b.unitType || "—"}</td>{" "}
+                        {/* ✅ */}
                         <td className="border px-2 text-right">
                           {money(b.amount)}
                         </td>
@@ -347,7 +357,7 @@ export default function BookingComCheckPage() {
                           DB Record
                         </td>
                       </tr>
-                    ))
+                    )),
                   )}
               </tbody>
 
