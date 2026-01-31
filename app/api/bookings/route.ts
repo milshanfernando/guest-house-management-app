@@ -29,7 +29,7 @@ export async function GET(req: Request) {
       if (!dateParam) {
         return NextResponse.json(
           { error: "date is required for unassigned guests" },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -40,9 +40,9 @@ export async function GET(req: Request) {
       endOfDay.setHours(23, 59, 59, 999);
 
       const bookings = await Booking.find({
-        roomId: { $exists: false },
         status: { $ne: "cancel" },
         checkInDate: { $gte: startOfDay, $lte: endOfDay },
+        $or: [{ roomId: { $exists: false } }, { roomId: null }],
       })
         .populate("propertyId")
         .sort({ checkInDate: 1 });
@@ -148,7 +148,7 @@ export async function POST(req: Request) {
     if (existing) {
       return NextResponse.json(
         { error: "Reservation ID already exists" },
-        { status: 409 }
+        { status: 409 },
       );
     }
 
@@ -163,7 +163,7 @@ export async function POST(req: Request) {
     console.error("BOOKING POST ERROR:", error);
     return NextResponse.json(
       { error: "Failed to create booking" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -180,7 +180,7 @@ export async function PATCH(req: Request) {
     if (!bookingId)
       return NextResponse.json(
         { error: "bookingId required" },
-        { status: 400 }
+        { status: 400 },
       );
 
     let booking;
@@ -188,19 +188,19 @@ export async function PATCH(req: Request) {
       booking = await Booking.findByIdAndUpdate(
         bookingId,
         { roomId },
-        { new: true }
+        { new: true },
       );
     } else if (action === "checkin") {
       booking = await Booking.findByIdAndUpdate(
         bookingId,
         { status: "checked_in" },
-        { new: true }
+        { new: true },
       );
     } else if (action === "checkout") {
       booking = await Booking.findByIdAndUpdate(
         bookingId,
         { status: "checked_out" },
-        { new: true }
+        { new: true },
       );
     }
 
@@ -209,7 +209,7 @@ export async function PATCH(req: Request) {
     console.error("BOOKING PATCH ERROR:", error);
     return NextResponse.json(
       { error: "Failed to update booking" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -228,7 +228,7 @@ export async function DELETE(req: Request) {
     if (!bookingId) {
       return NextResponse.json(
         { error: "bookingId required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -237,7 +237,7 @@ export async function DELETE(req: Request) {
       if (!deleted) {
         return NextResponse.json(
           { error: "Booking not found" },
-          { status: 404 }
+          { status: 404 },
         );
       }
       return NextResponse.json({
@@ -250,14 +250,14 @@ export async function DELETE(req: Request) {
     const booking = await Booking.findByIdAndUpdate(
       bookingId,
       { status: "cancel" },
-      { new: true }
+      { new: true },
     );
     return NextResponse.json(booking);
   } catch (error) {
     console.error("BOOKING DELETE ERROR:", error);
     return NextResponse.json(
       { error: "Failed to delete booking" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
