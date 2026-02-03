@@ -383,6 +383,8 @@ function PlatformSection({
               <th className="px-4 py-3 text-left">Guest</th>
               <th className="px-4 py-3 text-left">Property</th>
               <th className="px-4 py-3 text-left">Room</th>
+              <th className="px-4 py-3 text-left">Type</th>
+              <th className="px-4 py-3 text-left">Date</th>
               <th className="px-4 py-3 text-right">Amount</th>
             </tr>
           </thead>
@@ -393,6 +395,14 @@ function PlatformSection({
                 <td className="px-4 py-3">{b.propertyId?.name}</td>
                 <td className="px-4 py-3">
                   {b.roomId?.propertyId?.name} – {b.roomId?.roomNo}
+                </td>
+                <td className="px-4 py-3 text-center">
+                  {b.paymentMethod || "—"}
+                </td>
+                <td className="px-4 py-3">
+                  {type === "direct" && b.paymentDate
+                    ? new Date(b.paymentDate).toLocaleDateString()
+                    : "—"}
                 </td>
                 <td className="px-4 py-3 text-right font-medium">
                   {formatMoney(

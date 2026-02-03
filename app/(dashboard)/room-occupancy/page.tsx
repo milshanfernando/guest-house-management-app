@@ -38,6 +38,15 @@ export default function RoomOccupancyPage() {
 
   const [propertyId, setPropertyId] = useState("");
   const [selectedDate, setSelectedDate] = useState(today);
+  const [guestSearch, setGuestSearch] = useState("");
+  const { data: searchedGuests = [] } = useQuery<Booking[]>({
+    queryKey: ["bookingSearch", guestSearch],
+    enabled: guestSearch.length > 1,
+    queryFn: () =>
+      fetch(`/api/search-assign?query=${guestSearch}`).then((res) =>
+        res.json(),
+      ),
+  });
 
   const inputClass =
     "border rounded p-2 h-10 bg-white text-gray-900 w-full appearance-none";
@@ -243,6 +252,11 @@ export default function RoomOccupancyPage() {
                         {b.property?.name}
                       </p>
                     </div>
+                    <div className=" flex justify-end">
+                      <p className="font-semibold text-xs text-emerald-800">
+                        {b.unitType}
+                      </p>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -268,6 +282,43 @@ export default function RoomOccupancyPage() {
                     </option>
                   ))}
                 </select>
+              )}
+
+              {isAvailable && (
+                <div className="mt-4 space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Search guest name..."
+                    value={guestSearch}
+                    onChange={(e) => setGuestSearch(e.target.value)}
+                    className={inputClass}
+                  />
+
+                  {guestSearch.length > 1 && (
+                    <select
+                      className={inputClass}
+                      onChange={(e) =>
+                        bookingMutation.mutate({
+                          action: "assign",
+                          roomId: room._id,
+                          bookingId: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="">Assign Guest</option>
+
+                      {searchedGuests.length === 0 && (
+                        <option disabled>No guests found</option>
+                      )}
+
+                      {searchedGuests.map((b) => (
+                        <option key={b._id} value={b._id}>
+                          {b.guestName} • {b.propertyId?.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
               )}
             </div>
           );

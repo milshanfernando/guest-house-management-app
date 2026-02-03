@@ -53,6 +53,7 @@ export async function GET(req: Request) {
 
       roomId: { $exists: true },
     })
+      .populate("propertyId")
       .populate({
         path: "roomId",
         match: {
@@ -87,6 +88,11 @@ export async function GET(req: Request) {
 
       return {
         ...b.toObject(),
+        // ✅ keep ID
+        propertyId: b.propertyId._id,
+
+        // ✅ full populated object
+        property: b.propertyId,
         type,
       };
     });
